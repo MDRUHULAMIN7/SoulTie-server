@@ -374,6 +374,15 @@ app.put('/payment/approve',async(req,res)=>{
       res.send(result)
     })
 
+    // /  ................
+    app.post('/reqbiodatas/:id',async(req,res)=>{
+
+      const biodataId= req.params;
+      const query ={"BiodataId":biodataId}
+      const res1 = await biodatasCollection.findOne(query);
+      res.send(res1)
+    })
+
     // get favourites dataa
 
     app.get('/favourites/:email',async(req,res)=>{
