@@ -249,6 +249,11 @@ const verifyToken =(req,res,next)=>{
 
     })
 
+    app.get('/payment',async(req,res)=>{
+      result = await paymentCollection.find().toArray();
+      res.send(result)
+    })
+
 
     // get premium biodatas
     app.get('/premium-biodatas',async (req,res)=>{
