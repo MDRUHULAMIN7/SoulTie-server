@@ -4,6 +4,7 @@ const jwt = require('jsonwebtoken')
 const app = express();
 const port = process.env.PORT || 5000;
 require('dotenv').config()
+const stripe = require('stripe')(process.env.STRIPE_SECRET)
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // midleware
 
@@ -71,6 +72,24 @@ const verifyToken =(req,res,next)=>{
     })
 }
     //
+
+    // 
+    // payment intent 
+
+    app.post('/create-payment-intent',async(req,res)=>{
+      const {price}=req.body;
+      const amount =parseInt(price*100)
+
+     const paymentIntent= await stripe.paymentIntents.create({
+      amount:amount,
+      currrency :'usd',
+      payment_method_types:['card']
+     })
+     res.send({
+      clientSecret: paymentIntent.client_secret,
+    });
+
+    })
 
     // post user data 
     app.post('/users',async(req,res)=>{
