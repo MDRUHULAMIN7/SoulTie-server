@@ -150,7 +150,7 @@ const verifyToken =(req,res,next)=>{
       console.log(updateroll,id);
     })
 
-    // add biodata 
+    // add biodata /edit biodata
 
     app.put('/biodatas',async(req,res)=>{
       const biodata=req.body;
@@ -249,18 +249,34 @@ const verifyToken =(req,res,next)=>{
 
     })
 // get payment
-    app.get('/payment',async(req,res)=>{
+    app.get('/payments',async(req,res)=>{
       result = await paymentCollection.find().toArray();
       res.send(result)
     })
-// get  approved payment
-    app.get('/payment-appeoved',async(req,res)=>{
-      const status="approved"
-      const query = { "status":status}
+// get my approved payment
+    app.get('/payment/:email',async(req,res)=>{
+      const email=req.params.email
+      const query = { email:email}
       result = await paymentCollection.find(query).toArray();
       res.send(result)
     })
+// approve requestred data
 
+app.put('/payment/approve',async(req,res)=>{
+     const update = req.body;
+     console.log(update);
+     const options={upsert:true}
+     const updateData={
+      $set:{
+        status:update?.data
+      }
+     }
+     const query = {"biodataId":update?.biodataId}
+     console.log(query);
+     const result = await paymentCollection.updateOne(query,updateData,options)
+     res.send(result)
+
+})
 
     // get premium biodatas
     app.get('/premium-biodatas',async (req,res)=>{
