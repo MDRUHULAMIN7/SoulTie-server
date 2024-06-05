@@ -240,7 +240,7 @@ const verifyToken =(req,res,next)=>{
 
     })
 
-    // payment
+    //post payment
     app.post('/payment',async (req,res)=>{
       const payment =req.body;
       console.log(payment);
@@ -248,9 +248,16 @@ const verifyToken =(req,res,next)=>{
       res.send(result)
 
     })
-
+// get payment
     app.get('/payment',async(req,res)=>{
       result = await paymentCollection.find().toArray();
+      res.send(result)
+    })
+// get  approved payment
+    app.get('/payment-appeoved',async(req,res)=>{
+      const status="approved"
+      const query = { "status":status}
+      result = await paymentCollection.find(query).toArray();
       res.send(result)
     })
 
