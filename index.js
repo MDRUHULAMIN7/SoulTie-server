@@ -36,8 +36,8 @@ async function run() {
 const datbase = client.db("SoulTie");
 const usersCollection = datbase.collection('users')
 const biodatasCollection = datbase.collection('biodatas')
-const
-favouritesCollection = datbase.collection('favourites')
+const favouritesCollection = datbase.collection('favourites')
+const paymentCollection = datbase.collection('payment')
 // 
    // create jwt token 
    app.post('/jwt',async(req,res)=>{
@@ -239,6 +239,17 @@ const verifyToken =(req,res,next)=>{
     });
 
     })
+
+    // payment
+    app.post('/payment',async (req,res)=>{
+      const payment =req.body;
+      console.log(payment);
+      const result = await paymentCollection.insertOne(payment)
+      res.send(result)
+
+    })
+
+
     // get premium biodatas
     app.get('/premium-biodatas',async (req,res)=>{
      const roles="premium"
