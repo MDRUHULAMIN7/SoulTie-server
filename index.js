@@ -76,21 +76,7 @@ const verifyToken =(req,res,next)=>{
     // 
     // payment intent 
 
-    app.post('/create-payment-intent',async(req,res)=>{
-      const {price}=req.body;
-      const amount =parseInt(price*100)
-
-     const paymentIntent= await stripe.paymentIntents.create({
-      amount:amount,
-      currrency :'usd',
-      payment_method_types:['card']
-     })
-     res.send({
-      clientSecret: paymentIntent.client_secret,
-    });
-
-    })
-
+   
     // post user data 
     app.post('/users',async(req,res)=>{
       const user =req.body;
