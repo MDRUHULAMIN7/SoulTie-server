@@ -76,20 +76,7 @@ const verifyToken =(req,res,next)=>{
     // 
     // payment intent 
 
-    app.post('/create-payment-intent',async(req,res)=>{
-      const {price}=req.body;
-      const amount =parseInt(price*100)
-
-     const paymentIntent= await stripe.paymentIntents.create({
-      amount:amount,
-      currrency :'usd',
-      payment_method_types:['card']
-     })
-     res.send({
-      clientSecret: paymentIntent.client_secret,
-    });
-
-    })
+   
 
     // post user data 
     app.post('/users',async(req,res)=>{
@@ -232,6 +219,26 @@ const verifyToken =(req,res,next)=>{
 
       res.send([result])
     })
+
+    // payment intent
+
+    app.post('/create-payment-intent',async(req,res)=>{
+      const {price}=req.body;
+      console.log('price',price);
+      const amount =parseInt(price*100)
+  
+ 
+     const paymentIntent= await stripe.paymentIntents.create({
+      amount:amount,
+      currency :'usd',
+      payment_method_types:['card']
+     })
+
+     res.send({
+      clientSecret: paymentIntent.client_secret
+    });
+
+    })
     // get premium biodatas
     app.get('/premium-biodatas',async (req,res)=>{
      const roles="premium"
@@ -323,7 +330,7 @@ const verifyToken =(req,res,next)=>{
       const res1 = await favouritesCollection.findOne(query);
    
       if(res1)return res.status(403).send({message:"forbidean accsss"})
-      console.log(favouriteData);
+      // console.log(favouriteData);
       const result = await favouritesCollection.insertOne(favouriteData)
       res.send(result)
     })
@@ -333,11 +340,11 @@ const verifyToken =(req,res,next)=>{
     app.get('/favourites/:email',async(req,res)=>{
 
       const email = req.params.email;
-      console.log(email);
+      // console.log(email);
       const query = {"useremail":email}
-      console.log(query);
+      // console.log(query);
       const result = await favouritesCollection.find(query).toArray();
-      console.log(result);
+      // console.log(result);
       res.send(result)
     })
     app.delete("/favourites/:id",async(req,res)=>{
