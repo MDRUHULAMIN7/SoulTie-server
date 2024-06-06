@@ -375,11 +375,14 @@ app.put('/payment/approve',async(req,res)=>{
     })
 
     // /  ................
-    app.post('/reqbiodatas/:id',async(req,res)=>{
+    app.get('/reqbiodatas-paument/:id',async(req,res)=>{
 
-      const biodataId= req.params;
+      const biodataId= req.params.biodataId;
+      
+      console.log(biodataId,'from me');
       const query ={"BiodataId":biodataId}
       const res1 = await biodatasCollection.findOne(query);
+      console.log(res1);
       res.send(res1)
     })
 
