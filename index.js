@@ -374,16 +374,21 @@ app.put('/payment/approve',async(req,res)=>{
       res.send(result)
     })
 
-    // /  ................
+    // /  ................ get my request 
     app.get('/reqbiodatas-paument/:id',async(req,res)=>{
-
-      const biodataId= req.params.biodataId;
-      
-      console.log(biodataId,'from me');
-      const query ={"BiodataId":biodataId}
+      const id= req.params.id;
+      const nt = parseInt(id)
+      const query ={"biodataId":nt}
       const res1 = await biodatasCollection.findOne(query);
-      console.log(res1);
       res.send(res1)
+    })
+    // delete my eequest
+    app.delete('/payment-delete/:id',async(req,res)=>{
+
+      id=req.params.id;
+      const query = {_id:new ObjectId(id)}
+      const result = await paymentCollection.deleteOne(query)
+      res.send(result) 
     })
 
     // get favourites dataa
@@ -401,9 +406,9 @@ app.put('/payment/approve',async(req,res)=>{
     app.delete("/favourites/:id",async(req,res)=>{
       const  biodataId = parseInt(req.params.id);
       const query = {"BiodataId":biodataId}
-      console.log(query);
+    
       const result = await favouritesCollection.deleteOne(query)
-      console.log(result);
+      
       res.send(result)
 
     })
