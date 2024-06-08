@@ -38,6 +38,7 @@ const usersCollection = datbase.collection('users')
 const biodatasCollection = datbase.collection('biodatas')
 const favouritesCollection = datbase.collection('favourites')
 const paymentCollection = datbase.collection('payment')
+const successCollection = datbase.collection('success')
 // 
    // create jwt token 
    app.post('/jwt',async(req,res)=>{
@@ -74,7 +75,17 @@ const verifyToken =(req,res,next)=>{
     //
 
     // 
-    // payment intent 
+    // success story post 
+     app.post('/success',async(req,res)=>{
+       const data = req.body;
+        console.log(data);
+       const result= await successCollection.insertOne(data)
+       res.send(result)
+     })
+     app.get('/success',async(req,res)=>{
+       const result= await successCollection.find().toArray()
+       res.send(result)
+     })
 
    
 
@@ -400,7 +411,6 @@ app.put('/payment/approve',async(req,res)=>{
       const query = {"useremail":email}
       // console.log(query);
       const result = await favouritesCollection.find(query).toArray();
-      // console.log(result);
       res.send(result)
     })
     app.delete("/favourites/:id",async(req,res)=>{
@@ -411,6 +421,31 @@ app.put('/payment/approve',async(req,res)=>{
       
       res.send(result)
 
+    })
+
+    app.get('/admin-info',async(req,res)=>{
+     const biodata= await biodatasCollection.estimatedDocumentCount()
+     const query1={"biodataType":"male"}
+     const query2={"biodataType":"female"}
+     const query3={"role":"premium"}
+
+     const maleData = (await biodatasCollection.find(query1).toArray()).length
+     const femaleData = (await biodatasCollection.find(query2).toArray()).length
+     const premiumData = (await biodatasCollection.find(query3).toArray()).length
+    
+      const  result= await paymentCollection.aggregate([
+    {
+      $group:{
+        _id:null,
+        totalRevenue:{
+          $sum:"$price"
+        }
+      }
+    }
+      ]).toArray()
+
+      const revenue = result.length >0 ? result[0].totalRevenue : 0;
+      res.send({revenue,biodata,maleData,femaleData,premiumData})
     })
   
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
