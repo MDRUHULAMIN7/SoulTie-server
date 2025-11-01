@@ -13,12 +13,12 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:5000",
-      "https://n-nine-taupe.vercel.app"
+      "https://soul-tie-server.vercel.app"
     ],
     methods: ["GET", "POST", "PUT", "DELETE","PATCH"],
     credentials: true,
   })
-  
+
 );
 app.use(express.json());
 
