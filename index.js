@@ -8,7 +8,17 @@ const stripe = require('stripe')(process.env.STRIPE_SECRET)
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 // midleware
 
-app.use(cors());
+app.use(
+  cors({
+    origin: [
+      "http://localhost:5173",
+      "http://localhost:5000",
+      "https://n-nine-taupe.vercel.app"
+    ],
+    methods: ["GET", "POST", "PUT", "DELETE","PATCH"],
+    credentials: true,
+  })
+);
 app.use(express.json());
 
 
@@ -224,12 +234,159 @@ const verifyToken =(req,res,next)=>{
     })
 
     // get biodatas
-    app.get('/biodatas',async (req,res)=>{
-      const result = await biodatasCollection.find().toArray();
-      
+/**
+ * Single comprehensive endpoint for biodatas with filtering and pagination
+ * FIXED: Age filtering now works correctly with string values in database
+ */
+app.get('/biodatas', async (req, res) => {
+  try {
+    const {
+      biodataType,
+      minAge,
+      maxAge,
+      division,
+      race,
+      occupation,
+      role,
+      page = 1,
+      limit = 8,
+      sortBy = 'biodataId',
+      order = 'desc'
+    } = req.query;
 
-      res.send([result])
-    })
+    // Build query object
+    const query = {};
+
+    // Add filters if provided
+    if (biodataType) {
+      query.biodataType = biodataType.toLowerCase();
+    }
+
+    // Age filter - FIXED: Handle string age values properly
+    if (minAge || maxAge) {
+      query.Age = {};
+      
+      if (minAge) {
+        // Convert minAge to number and compare with Age field (which is string)
+        query.Age.$gte = minAge.toString();
+      }
+      
+      if (maxAge) {
+        // Convert maxAge to number and compare with Age field (which is string)
+        query.Age.$lte = maxAge.toString();
+      }
+    }
+
+    if (division) {
+      query.ParmanentDivison = division;
+    }
+
+    if (race) {
+      query.Race = { $regex: new RegExp(race, 'i') };
+    }
+
+    if (occupation) {
+      query.Occupation = { $regex: new RegExp(occupation, 'i') };
+    }
+
+    if (role) {
+      query.role = role.toLowerCase();
+    }
+
+    // Build sort object
+    const sortField = sortBy;
+    const sortOrder = order === 'desc' ? -1 : 1;
+    const sortOptions = { [sortField]: sortOrder };
+
+    // Calculate pagination
+    const pageNumber = Math.max(1, parseInt(page));
+    const limitNumber = Math.min(50, Math.max(1, parseInt(limit)));
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Execute query with pagination
+    const [data, totalItems] = await Promise.all([
+      biodatasCollection
+        .find(query)
+        .sort(sortOptions)
+        .skip(skip)
+        .limit(limitNumber)
+        .toArray(),
+      biodatasCollection.countDocuments(query)
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalItems / limitNumber);
+    const hasNextPage = pageNumber < totalPages;
+    const hasPrevPage = pageNumber > 1;
+
+    // Send response
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages,
+        totalItems,
+        itemsPerPage: limitNumber,
+        hasNextPage,
+        hasPrevPage
+      },
+      filters: {
+        biodataType: biodataType || null,
+        ageRange: minAge && maxAge ? `${minAge}-${maxAge}` : null,
+        division: division || null,
+        race: race || null,
+        occupation: occupation || null,
+        role: role || null
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching biodatas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch biodatas',
+      message: error.message
+    });
+  }
+});
+// Bonus endpoint for filter options
+app.get('/biodatas/filter-options', async (req, res) => {
+  try {
+    const [divisions, races, occupations] = await Promise.all([
+      biodatasCollection.distinct('ParmanentDivison'),
+      biodatasCollection.distinct('Race'),
+      biodatasCollection.distinct('Occupation')
+    ]);
+
+    res.status(200).json({
+      success: true,
+      filterOptions: {
+        divisions: divisions.filter(Boolean).sort(),
+        races: races.filter(Boolean).sort(),
+        occupations: occupations.filter(Boolean).sort(),
+        biodataTypes: ['male', 'female'],
+        roles: ['premium', 'requested', 'standard'],
+        ageRanges: [
+          { label: '18-25', min: 18, max: 25 },
+          { label: '26-30', min: 26, max: 30 },
+          { label: '31-35', min: 31, max: 35 },
+          { label: '36-40', min: 36, max: 40 },
+          { label: '41-50', min: 41, max: 50 },
+          { label: '50+', min: 50, max: 100 }
+        ]
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching filter options:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch filter options',
+      message: error.message
+    });
+  }
+});
 
     // payment intent
 
@@ -290,35 +447,63 @@ app.put('/payment/approve',async(req,res)=>{
 })
 
     // get premium biodatas
-    app.get('/premium-biodatas',async (req,res)=>{
-     const roles="premium"
-      const query={"role":roles}
-      const result = await biodatasCollection.find(query).toArray();
+    // app.get('/premium-biodatas',async (req,res)=>{
+    //  const roles="premium"
+    //   const query={"role":roles}
+    //   const result = await biodatasCollection.find(query).toArray();
       
 
-      res.send([result])
-    })
+    //   res.send([result])
+    // })
     // filter oremium acending
 
-    app.get('/getbyage-premium',async(req,res)=>{
-      const role="premium"
-      const query = {"role":role };
+    // app.get('/getbyage-premium',async(req,res)=>{
+    //   const role="premium"
+    //   const query = {"role":role };
 
-      const result = await biodatasCollection.find(query).sort({"Age" : 1}).toArray();
-      // console.log(result);
-      res.send(result)
-    })
+    //   const result = await biodatasCollection.find(query).sort({"Age" : 1}).toArray();
+    //   // console.log(result);
+    //   res.send(result)
+    // })
     // filter oremium deacending
 
-    app.get('/getbyage-premium-des',async(req,res)=>{
-      const role="premium"
-      const query = {"role":role };
+    // app.get('/getbyage-premium-des',async(req,res)=>{
+    //   const role="premium"
+    //   const query = {"role":role };
 
-      const result = await biodatasCollection.find(query).sort({"Age" : -1}).toArray();
-      // console.log(result);
-      res.send(result)
-    })
-
+    //   const result = await biodatasCollection.find(query).sort({"Age" : -1}).toArray();
+    //   // console.log(result);
+    //   res.send(result)
+    // })
+app.get('/premium-biodatas', async (req, res) => {
+  try {
+    const { sortBy, order } = req.query;
+    
+    // Base query for premium members
+    const query = { role: "premium" };
+    
+    // Build sort options
+    let sortOptions = {};
+    if (sortBy && order) {
+      const sortField = sortBy === 'age' ? 'Age' : sortBy;
+      sortOptions[sortField] = order === 'desc' ? -1 : 1;
+    }
+    
+    // Execute query with optional sorting
+    const result = await biodatasCollection
+      .find(query)
+      .sort(sortOptions)
+      .toArray();
+    
+    res.status(200).json(result);
+  } catch (error) {
+    console.error('Error fetching premium biodatas:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch premium biodatas',
+      message: error.message 
+    });
+  }
+});
 
     // update biodata roll ;
 
