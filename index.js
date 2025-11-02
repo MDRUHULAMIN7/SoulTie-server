@@ -13,7 +13,8 @@ app.use(
     origin: [
       "http://localhost:5173",
       "http://localhost:5000",
-      "https://soul-tie-server.vercel.app"
+      "https://soul-tie-server.vercel.app",
+      "https://soultie.web.app"
     ],
     methods: ["GET", "POST", "PUT", "DELETE","PATCH"],
     credentials: true,
@@ -235,10 +236,7 @@ const verifyToken =(req,res,next)=>{
     })
 
     // get biodatas
-/**
- * Single comprehensive endpoint for biodatas with filtering and pagination
- * FIXED: Age filtering now works correctly with string values in database
- */
+
 app.get('/biodatas', async (req, res) => {
   try {
     const {
@@ -388,7 +386,141 @@ app.get('/biodatas/filter-options', async (req, res) => {
     });
   }
 });
+// get similar biodata
 
+// Get similar biodatas based on biodataType, age, height, and weight ranges
+app.get('/biodatas/:id/similar', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const limit = parseInt(req.query.limit) || 3;
+    
+    // First, get the current biodata
+    const currentBiodata = await biodatasCollection.findOne({
+      _id: new ObjectId(id)
+    });
+    
+    if (!currentBiodata) {
+      return res.status(404).json({
+        success: false,
+        message: 'Biodata not found'
+      });
+    }
+    
+    // Helper function to safely parse numeric strings
+    const parseNumber = (value) => {
+      if (!value) return null;
+      const parsed = parseFloat(value.toString().replace(/[^\d.-]/g, ''));
+      return isNaN(parsed) ? null : parsed;
+    };
+    
+    // Parse current biodata values from strings
+    const currentAge = parseNumber(currentBiodata.Age);
+    const currentHeight = parseNumber(currentBiodata.Height);
+    const currentWeight = parseNumber(currentBiodata.Weight);
+    
+    // Validate that we have valid numbers
+    if (!currentAge || !currentHeight || !currentWeight) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid biodata values for comparison'
+      });
+    }
+    
+    // Define similarity ranges
+    const ageRange = 5;        // ±5 years
+    const heightRange = 0.15;  // ±15cm (0.15m) or ±6 inches
+    const weightRange = 10;    // ±10kg
+    
+    // Build base similarity query
+    const similarityQuery = {
+      biodataType: currentBiodata.biodataType,
+      _id: { $ne: new ObjectId(id) } // Exclude current biodata
+    };
+    
+    // Find all potential matches
+    const allBiodatas = await biodatasCollection
+      .find(similarityQuery)
+      .toArray();
+    
+    // Calculate similarity scores and filter
+    const scoredBiodatas = allBiodatas
+      .map(biodata => {
+        // Parse string values to numbers
+        const age = parseNumber(biodata.Age);
+        const height = parseNumber(biodata.Height);
+        const weight = parseNumber(biodata.Weight);
+        
+        // Skip if any value is invalid
+        if (!age || !height || !weight) {
+          return null;
+        }
+        
+        // Check if within ranges
+        const ageDiff = Math.abs(age - currentAge);
+        const heightDiff = Math.abs(height - currentHeight);
+        const weightDiff = Math.abs(weight - currentWeight);
+        
+        const ageMatch = ageDiff <= ageRange;
+        const heightMatch = heightDiff <= heightRange;
+        const weightMatch = weightDiff <= weightRange;
+        
+        // Calculate similarity score (0-4 points)
+        let score = 1; // Base point for same biodataType
+        if (ageMatch) score += 1;
+        if (heightMatch) score += 1;
+        if (weightMatch) score += 1;
+        
+        return {
+          ...biodata,
+          similarityScore: score,
+          differences: {
+            age: ageDiff,
+            height: heightDiff,
+            weight: weightDiff
+          },
+          ageMatch,
+          heightMatch,
+          weightMatch
+        };
+      })
+      // Remove null entries (invalid data)
+      .filter(biodata => biodata !== null)
+      // Filter: at least 2 matches (biodataType + one other criteria)
+      .filter(biodata => biodata.similarityScore >= 2)
+      // Sort by similarity score (highest first), then by age difference
+      .sort((a, b) => {
+        if (b.similarityScore !== a.similarityScore) {
+          return b.similarityScore - a.similarityScore;
+        }
+        // If same score, prefer closer age match
+        return a.differences.age - b.differences.age;
+      })
+      // Limit results
+      .slice(0, limit)
+      // Remove similarity metadata before sending
+      .map(({ similarityScore, differences, ageMatch, heightMatch, weightMatch, ...biodata }) => biodata);
+    
+    res.status(200).json({
+      success: true,
+      data: scoredBiodatas,
+      count: scoredBiodatas.length,
+      criteria: {
+        biodataType: currentBiodata.biodataType,
+        ageRange: `${currentAge - ageRange} - ${currentAge + ageRange} years`,
+        heightRange: `${(currentHeight - heightRange).toFixed(2)} - ${(currentHeight + heightRange).toFixed(2)} m`,
+        weightRange: `${currentWeight - weightRange} - ${currentWeight + weightRange} kg`
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error fetching similar biodatas:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch similar biodatas',
+      message: error.message
+    });
+  }
+});
     // payment intent
 
     app.post('/create-payment-intent',async(req,res)=>{
@@ -447,35 +579,7 @@ app.put('/payment/approve',async(req,res)=>{
 
 })
 
-    // get premium biodatas
-    // app.get('/premium-biodatas',async (req,res)=>{
-    //  const roles="premium"
-    //   const query={"role":roles}
-    //   const result = await biodatasCollection.find(query).toArray();
-      
-
-    //   res.send([result])
-    // })
-    // filter oremium acending
-
-    // app.get('/getbyage-premium',async(req,res)=>{
-    //   const role="premium"
-    //   const query = {"role":role };
-
-    //   const result = await biodatasCollection.find(query).sort({"Age" : 1}).toArray();
-    //   // console.log(result);
-    //   res.send(result)
-    // })
-    // filter oremium deacending
-
-    // app.get('/getbyage-premium-des',async(req,res)=>{
-    //   const role="premium"
-    //   const query = {"role":role };
-
-    //   const result = await biodatasCollection.find(query).sort({"Age" : -1}).toArray();
-    //   // console.log(result);
-    //   res.send(result)
-    // })
+//premium biodata
 app.get('/premium-biodatas', async (req, res) => {
   try {
     const { sortBy, order } = req.query;
