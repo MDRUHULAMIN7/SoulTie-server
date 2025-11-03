@@ -112,11 +112,6 @@ const verifyToken =(req,res,next)=>{
       res.send(result)
     })
 
-    // get all users
-    app.get('/manageusers',async(req,res)=>{
-      const result = await usersCollection.find().toArray();
-      res.send(result)
-    })
     // get admin user data
 
     app.get('/users/admin/:email',verifyToken,async (req,res)=>{
@@ -142,36 +137,151 @@ const verifyToken =(req,res,next)=>{
       const result = await usersCollection.findOne(query)
       res.send(result)
     })
-    // update user roll ;
 
-    app.patch('/userupdate/:id',async (req,res)=>{
-      const updateroll =req.body.updaterole;
-      const id = req.params.id;
-      const query ={_id: new ObjectId(id)}
-     const  updateDoc ={
-      $set:{
-        roll:updateroll
-      }
-     }
-     const result = await usersCollection.updateOne(query,updateDoc);
-     res.send(result)
-      console.log(updateroll,id);
-    })
 
-    // user update to premium
-    app.patch('/userupdatepremium/:id',async (req,res)=>{
-      const updateroll =req.body.updaterole;
-      const id = req.params.id;
-      const query ={_id: new ObjectId(id)}
-     const  updateDoc ={
-      $set:{
-        role:updateroll
+//**  admin -> manageuser api 
+
+app.get('/manageusers', async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 8,
+      search = ''
+    } = req.query;
+
+    // Build query object
+    const query = {};
+
+    // Search by name or email
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Calculate pagination
+    const pageNumber = Math.max(1, parseInt(page));
+    const limitNumber = Math.max(1, parseInt(limit));
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Execute query with pagination
+    const [data, totalItems] = await Promise.all([
+      usersCollection
+        .find(query)
+        .sort({ _id: -1 }) // Sort by newest first
+        .skip(skip)
+        .limit(limitNumber)
+        .toArray(),
+      usersCollection.countDocuments(query)
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalItems / limitNumber);
+    const hasNextPage = pageNumber < totalPages;
+    const hasPrevPage = pageNumber > 1;
+
+    // Send response with proper structure
+    res.status(200).json({
+      success: true,
+      data,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages,
+        totalItems,
+        itemsPerPage: limitNumber,
+        hasNextPage,
+        hasPrevPage
       }
-     }
-     const result = await usersCollection.updateOne(query,updateDoc);
-     res.send(result)
-      console.log(updateroll,id);
-    })
+    });
+
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch users',
+      message: error.message
+    });
+  }
+});
+
+// Toggle Admin Role 
+app.patch('/userupdate/:id', async (req, res) => {
+  try {
+    const { updaterole } = req.body;
+    const id = req.params.id;
+    
+    const query = { _id: new ObjectId(id) };
+    const updateDoc = {
+      $set: {
+        roll: updaterole
+      }
+    };
+    
+    const result = await usersCollection.updateOne(query, updateDoc);
+    
+    if (result.modifiedCount > 0) {
+      res.status(200).json({
+        success: true,
+        message: `User role updated to ${updaterole}`,
+        modifiedCount: result.modifiedCount
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'No changes made',
+        modifiedCount: 0
+      });
+    }
+  } catch (error) {
+    console.error('Error updating user role:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update user role',
+      message: error.message
+    });
+  }
+});
+
+// Toggle Premium Status
+app.patch('/userupdatepremium/:id', async (req, res) => {
+  try {
+    const { updaterole } = req.body;
+    const id = req.params.id;
+    
+    const query = { _id: new ObjectId(id) };
+    const updateDoc = {
+      $set: {
+        role: updaterole
+      }
+    };
+    
+    const result = await usersCollection.updateOne(query, updateDoc);
+    
+    if (result.modifiedCount > 0) {
+      res.status(200).json({
+        success: true,
+        message: `User membership updated to ${updaterole}`,
+        modifiedCount: result.modifiedCount
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'No changes made',
+        modifiedCount: 0
+      });
+    }
+  } catch (error) {
+    console.error('Error updating user membership:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update user membership',
+      message: error.message
+    });
+  }
+});
+//** 
+
 
     // add biodata /edit biodata
 
@@ -387,8 +497,6 @@ app.get('/biodatas/filter-options', async (req, res) => {
   }
 });
 // get similar biodata
-
-// Get similar biodatas based on biodataType, age, height, and weight ranges
 app.get('/biodatas/:id/similar', async (req, res) => {
   try {
     const id = req.params.id;
@@ -549,11 +657,132 @@ app.get('/biodatas/:id/similar', async (req, res) => {
       res.send(result)
 
     })
-// get payment
-    app.get('/payments',async(req,res)=>{
-      result = await paymentCollection.find().toArray();
-      res.send(result)
-    })
+//**  get payment for approve-contact-request in admin
+
+app.get('/payments', async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 8
+    } = req.query;
+
+    // Calculate pagination
+    const pageNumber = Math.max(1, parseInt(page));
+    const limitNumber = Math.max(1, parseInt(limit));
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Execute query with pagination
+    const payments = await paymentCollection
+      .find({})
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(limitNumber)
+      .toArray();
+
+    const totalItems = await paymentCollection.countDocuments({});
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(totalItems / limitNumber);
+    const hasNextPage = pageNumber < totalPages;
+    const hasPrevPage = pageNumber > 1;
+
+    // Send response with proper structure
+    res.status(200).json({
+      success: true,
+      data: payments,
+      pagination: {
+        currentPage: pageNumber,
+        totalPages,
+        totalItems,
+        itemsPerPage: limitNumber,
+        hasNextPage,
+        hasPrevPage
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching payments:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch payment requests',
+      message: error.message
+    });
+  }
+});
+
+// Approve Contact Request
+app.put('/payment/approve', async (req, res) => {
+  try {
+    const { biodataId } = req.body;
+    
+    if (!biodataId) {
+      return res.status(400).json({
+        success: false,
+        error: 'Biodata ID is required'
+      });
+    }
+
+    // Find the current payment
+    const currentPayment = await paymentCollection.findOne({ 
+      biodataId: biodataId.toString() 
+    });
+
+    if (!currentPayment) {
+      return res.status(404).json({
+        success: false,
+        error: 'Payment request not found'
+      });
+    }
+
+    // Determine new status based on current status
+    const isCurrentlyApproved = currentPayment.status && 
+      (currentPayment.status.includes('aprove') || 
+       currentPayment.status.includes('approved'));
+
+    let newStatus;
+    if (isCurrentlyApproved) {
+      newStatus = 'pending'; // Revoke - set to pending
+    } else {
+      newStatus = `aprovefor${biodataId}`; // Approve - use your pattern
+    }
+
+    // Update the payment
+    const result = await paymentCollection.updateOne(
+      { biodataId: biodataId.toString() },
+      { 
+        $set: { 
+          status: newStatus,
+          ...(isCurrentlyApproved ? { approvedAt: null } : { approvedAt: new Date() })
+        } 
+      }
+    );
+
+    if (result.modifiedCount > 0) {
+      res.status(200).json({
+        success: true,
+        message: `Contact request ${isCurrentlyApproved ? 'revoked' : 'approved'} successfully`,
+        modifiedCount: result.modifiedCount,
+        newStatus: newStatus
+      });
+    } else {
+      res.status(400).json({
+        success: false,
+        message: 'No changes made',
+        modifiedCount: 0
+      });
+    }
+  } catch (error) {
+    console.error('Error updating payment status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to update contact request',
+      message: error.message
+    });
+  }
+});
+//** 
+
+
 // get my approved payment
     app.get('/payment/:email',async(req,res)=>{
       const email=req.params.email
@@ -561,23 +790,7 @@ app.get('/biodatas/:id/similar', async (req, res) => {
       result = await paymentCollection.find(query).toArray();
       res.send(result)
     })
-// approve requestred data
 
-app.put('/payment/approve',async(req,res)=>{
-     const update = req.body;
-     console.log(update);
-     const options={upsert:true}
-     const updateData={
-      $set:{
-        status:update?.data
-      }
-     }
-     const query = {"biodataId":update?.biodataId}
-     console.log(query);
-     const result = await paymentCollection.updateOne(query,updateData,options)
-     res.send(result)
-
-})
 
 //premium biodata
 app.get('/premium-biodatas', async (req, res) => {
@@ -713,30 +926,52 @@ app.get('/premium-biodatas', async (req, res) => {
 
     })
 
-    app.get('/admin-info',async(req,res)=>{
-     const biodata= await biodatasCollection.estimatedDocumentCount()
-     const query1={"biodataType":"male"}
-     const query2={"biodataType":"female"}
-     const query3={"role":"premium"}
-
-     const maleData = (await biodatasCollection.find(query1).toArray()).length
-     const femaleData = (await biodatasCollection.find(query2).toArray()).length
-     const premiumData = (await biodatasCollection.find(query3).toArray()).length
-    
-      const  result= await paymentCollection.aggregate([
-    {
-      $group:{
-        _id:null,
-        totalRevenue:{
-          $sum:"$price"
+ // admin-info 
+app.get('/admin-info', async (req, res) => {
+  try {
+    const [
+      totalBiodata,
+      maleData,
+      femaleData,
+      premiumData,
+      revenueResult
+    ] = await Promise.all([
+      biodatasCollection.estimatedDocumentCount(),
+      biodatasCollection.countDocuments({ "biodataType": "male" }),
+      biodatasCollection.countDocuments({ "biodataType": "female" }),
+      biodatasCollection.countDocuments({ "role": "premium" }),
+      paymentCollection.aggregate([
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: "$price" }
+          }
         }
-      }
-    }
       ]).toArray()
+    ]);
 
-      const revenue = result.length >0 ? result[0].totalRevenue : 0;
-      res.send({revenue,biodata,maleData,femaleData,premiumData})
-    })
+    const revenue = revenueResult.length > 0 ? revenueResult[0].totalRevenue : 0;
+
+    res.json({
+      success: true,
+      data: {
+        revenue,
+        biodata: totalBiodata,
+        maleData,
+        femaleData,
+        premiumData,
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch admin statistics',
+      message: error.message
+    });
+  }
+});
   
     console.log("Pinged your deployment. You successfully connected to MongoDB!");
   } finally {
