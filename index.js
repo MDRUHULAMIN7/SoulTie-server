@@ -94,13 +94,93 @@ const verifyToken =(req,res,next)=>{
        const result= await successCollection.insertOne(data)
        res.send(result)
      })
-     app.get('/success',async(req,res)=>{
-       const result= await successCollection.find().toArray()
-       res.send(result)
-     })
+  // Backend API Route with Pagination
+app.get('/success', async (req, res) => {
+  try {
+    // Get pagination parameters from query string
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 6;
+    const sortBy = req.query.sortBy || '_id';
+    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const search = req.query.search || '';
 
-   
+    console.log('API Params:', { page, limit, sortBy, sortOrder, search }); // Debug log
 
+    // Build filter query
+    const filter = {};
+    if (search) {
+      filter.$or = [
+        { shortStory: { $regex: search, $options: 'i' } },
+        { SelfBiodata: { $regex: search, $options: 'i' } },
+        { PartnerBiodata: { $regex: search, $options: 'i' } }
+      ];
+    }
+
+    // Get total count for pagination info
+    const totalStories = await successCollection.countDocuments(filter);
+    console.log('Total stories:', totalStories); // Debug log
+    
+    let stories;
+    let totalPages;
+    let showing;
+
+    if (limit === -1) {
+      // Get all data if limit is -1
+      stories = await successCollection
+        .find(filter)
+        .sort({ [sortBy]: sortOrder })
+        .toArray();
+      
+      totalPages = 1;
+      showing = stories.length;
+    } else {
+      // Calculate skip value for pagination
+      const skip = (page - 1) * limit;
+      totalPages = Math.ceil(totalStories / limit);
+      
+      // Get paginated data
+      stories = await successCollection
+        .find(filter)
+        .sort({ [sortBy]: sortOrder })
+        .skip(skip)
+        .limit(limit)
+        .toArray();
+      
+      showing = stories.length;
+    }
+
+    console.log('Returning stories:', stories.length); // Debug log
+    console.log('Pagination data:', { 
+      currentPage: page, 
+      totalPages, 
+      totalStories, 
+      showing 
+    }); // Debug log
+
+    // Send response with proper structure
+    res.status(200).json({
+      success: true,
+      data: stories,
+      pagination: {
+        currentPage: page,
+        totalPages: totalPages,
+        totalStories: totalStories,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+        limit: limit === -1 ? totalStories : limit,
+        showing: showing
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching success stories:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch success stories',
+      error: error.message
+    });
+  }
+});
     // post user data 
     app.post('/users',async(req,res)=>{
       const user =req.body;
@@ -323,7 +403,8 @@ app.patch('/userupdatepremium/:id', async (req, res) => {
 
     // get my biodata
     app.get('/view-biodatas/:email',async(req,res)=>{
-      const email = req.params.email;
+      const {email} = req.params.email;
+      console.log(email,"e")
       const query ={"ContactEmail":email};
       const result = await biodatasCollection.findOne(query)
       res.send(result)
