@@ -249,7 +249,7 @@ app.get('/manageusers', async (req, res) => {
     const [data, totalItems] = await Promise.all([
       usersCollection
         .find(query)
-        .sort({ _id: -1 }) // Sort by newest first
+        .sort({ _id: -1 }) 
         .skip(skip)
         .limit(limitNumber)
         .toArray(),
@@ -332,10 +332,10 @@ app.patch('/userupdatepremium/:id', async (req, res) => {
     const query = { _id: new ObjectId(id) };
     const updateDoc = {
       $set: {
-        role: updaterole
+        type: updaterole
       }
     };
-    
+    console.log(query)
     const result = await usersCollection.updateOne(query, updateDoc);
     
     if (result.modifiedCount > 0) {
@@ -365,46 +365,110 @@ app.patch('/userupdatepremium/:id', async (req, res) => {
 
     // add biodata /edit biodata
 
-    app.put('/biodatas',async(req,res)=>{
-      const biodata=req.body;
-        //  console.log(biodata.ContactEmail);
-        const options={upsert:true}
-        const data ={
-          $set:{
-            role:biodata.role,
-            name:biodata.name,
-            photo:biodata.photo, 
-            biodataType:biodata.biodataType,
-            birthDate:biodata.birthDate,
-        Height:biodata.Height,
-        Weight:biodata.Weight,
-        Age:biodata.Age,
-        Occupation:biodata.Occupation,
-        Race:biodata.Race,
-        FatherName:biodata.FatherName,
-        MotherName:biodata.MotherName,
-        ParmanentDivison:biodata.ParmanentDivison,
-        PresentDivison:biodata.PresentDivison,
-        PartnerAge:biodata.PartnerAge,
-        ParnerHeight:biodata.ParnerHeight,
-        PartnerWeight:biodata.PartnerWeight,
-        ContactEmail:biodata.ContactEmail,
-        MobileNumber:biodata.MobileNumber,
-        biodataId:biodata.biodataId
-          }
-        }
-      const query ={"ContactEmail" :biodata?.ContactEmail}
-      console.log(query);
+app.put('/biodatas', async (req, res) => {
+  try {
+    const biodata = req.body;
+    const query = { "ContactEmail": biodata?.ContactEmail };
     
-      const result = await biodatasCollection.updateOne(query,data,options);
+    // Check if biodata already exists
+    const existingBiodata = await biodatasCollection.findOne(query);
+    
+    const options = { upsert: true };
+    
+    // Prepare the update data
+    const updateData = {
+      name: biodata.name,
+      photo: biodata.photo,
+      biodataType: biodata.biodataType,
+      birthDate: biodata.birthDate,
+      Height: biodata.Height,
+      Weight: biodata.Weight,
+      Age: biodata.Age,
+      Occupation: biodata.Occupation,
+      Race: biodata.Race,
+      FatherName: biodata.FatherName,
+      MotherName: biodata.MotherName,
+      ParmanentDivison: biodata.ParmanentDivison,
+      PresentDivison: biodata.PresentDivison,
+      PartnerAge: biodata.PartnerAge,
+      ParnerHeight: biodata.ParnerHeight,
+      PartnerWeight: biodata.PartnerWeight,
+      ContactEmail: biodata.ContactEmail,
+      MobileNumber: biodata.MobileNumber,
+      hasAccess: biodata.hasAccess || [],
+      hasRequest: biodata.hasRequest || [],
+      updatedAt: new Date()
+    };
 
-      res.send(result)
-    })
+    // If biodata doesn't exist, create new one with generated ID
+    if (!existingBiodata) {
+      const totalBiodatas = await biodatasCollection.countDocuments();
+      const nextBiodataId = totalBiodatas + 1;
+      
+      updateData.biodataId = nextBiodataId;
+      updateData.createdAt = new Date();
+      updateData.role = 'normal';
+      
+      console.log('Creating new biodata with ID:', nextBiodataId);
+    } else {
+      // If biodata exists, keep the existing biodataId and createdAt
+      updateData.biodataId = existingBiodata.biodataId;
+      updateData.createdAt = existingBiodata.createdAt;
+      updateData.role = existingBiodata.role || 'normal';
+      
+      console.log('Updating existing biodata with ID:', existingBiodata.biodataId);
+    }
 
+    const data = {
+      $set: updateData
+    };
+
+    const result = await biodatasCollection.updateOne(query, data, options);
+
+    res.status(200).json({
+      success: true,
+      message: result.upsertedCount > 0 ? 'Biodata created successfully' : 'Biodata updated successfully',
+      biodataId: updateData.biodataId,
+      isNew: result.upsertedCount > 0,
+      data: result
+    });
+
+  } catch (error) {
+    console.error('Error in biodata creation/update:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process biodata',
+      error: error.message
+    });
+  }
+});
+
+// Get biodata by email
+app.get('/biodatas/email/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+    const biodata = await biodatasCollection.findOne({ ContactEmail: email });
+    
+    if (!biodata) {
+      return res.status(404).json({
+        success: false,
+        message: 'Biodata not found for this email'
+      });
+    }
+
+    res.status(200).json(biodata);
+  } catch (error) {
+    console.error('Error fetching biodata by email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch biodata',
+      error: error.message
+    });
+  }
+});
     // get my biodata
-    app.get('/view-biodatas/:email',async(req,res)=>{
-      const {email} = req.params.email;
-      console.log(email,"e")
+app.get('/view-biodatas/:email',async(req,res)=>{
+      const  email = req.params.email;
       const query ={"ContactEmail":email};
       const result = await biodatasCollection.findOne(query)
       res.send(result)
@@ -710,74 +774,324 @@ app.get('/biodatas/:id/similar', async (req, res) => {
     });
   }
 });
-    // payment intent
 
-    app.post('/create-payment-intent',async(req,res)=>{
-      const {price}=req.body;
-      console.log('price',price);
-      const amount =parseInt(price*100)
-  
- 
-     const paymentIntent= await stripe.paymentIntents.create({
-      amount:amount,
-      currency :'usd',
-      payment_method_types:['card']
-     })
 
-     res.send({
-      clientSecret: paymentIntent.client_secret
+
+
+
+
+
+// COMPLETE BACKEND API FOR PAYMENT WORKFLOW
+
+
+// 1. Create payment intent for Stripe
+app.post('/create-payment-intent', async (req, res) => {
+  try {
+    const { price } = req.body;
+    const amount = parseInt(price * 100);
+    
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: amount,
+      currency: 'usd',
+      payment_method_types: ['card']
     });
 
-    })
+    res.status(200).json({
+      success: true,
+      clientSecret: paymentIntent.client_secret
+    });
+  } catch (error) {
+    console.error('Error creating payment intent:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create payment intent',
+      error: error.message
+    });
+  }
+});
 
-    //post payment
-    app.post('/payment',async (req,res)=>{
-      const payment =req.body;
-      console.log(payment);
-      const result = await paymentCollection.insertOne(payment)
-      res.send(result)
+// 2. Save payment - OPTIMIZED (Only essential data)
+app.post('/payment', async (req, res) => {
+  try {
+    const { userEmail, biodataId, transactionId, amount } = req.body;
+    
+    // Get user to get their MongoDB ObjectId
+    const user = await usersCollection.findOne({ email: userEmail });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
 
-    })
-//**  get payment for approve-contact-request in admin
+    // Get biodata to get its MongoDB ObjectId
+    const biodata = await biodatasCollection.findOne({ 
+      biodataId: parseInt(biodataId) 
+    });
+    if (!biodata) {
+      return res.status(404).json({
+        success: false,
+        message: 'Biodata not found'
+      });
+    }
+
+    const userId = user._id;
+    const biodataObjectId = biodata._id;
+
+    // Check if payment already exists
+    const existingPayment = await paymentCollection.findOne({
+      userId: userId,
+      biodataId: biodataObjectId
+    });
+
+    if (existingPayment) {
+      return res.status(400).json({
+        success: false,
+        message: 'Payment request already exists for this biodata'
+      });
+    }
+
+    // Check if user already has access
+    if (biodata.hasAccess && biodata.hasAccess.includes(userId.toString())) {
+      return res.status(400).json({
+        success: false,
+        message: 'You already have access to this biodata'
+      });
+    }
+
+    // Save OPTIMIZED payment record (only essential data)
+    const paymentData = {
+      userId: userId,                    
+      biodataId: biodataObjectId,      
+      transactionId: transactionId,     
+      amount: amount,                  
+      status: 'pending',               
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+
+    const result = await paymentCollection.insertOne(paymentData);
+
+    // Add user ObjectId to biodata's hasRequest array
+    await biodatasCollection.updateOne(
+      { _id: biodataObjectId },
+      { 
+        $addToSet: { hasRequest: userId.toString() },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    res.status(200).json({
+      success: true,
+      insertedId: result.insertedId,
+      message: 'Payment recorded successfully and access request submitted'
+    });
+  } catch (error) {
+    console.error('Error saving payment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to save payment',
+      error: error.message
+    });
+  }
+});
+
+// 3. Check biodata access - COMPREHENSIVE CHECK
+app.get('/check-biodata-access', async (req, res) => {
+  try {
+    const { userEmail, biodataId } = req.query;
+
+    if (!userEmail || !biodataId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User email and biodata ID are required'
+      });
+    }
+
+    // Get user information
+    const user = await usersCollection.findOne({ email: userEmail });
+    
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        hasAccess: false,
+        accessType: 'none',
+        isPremium: false,
+        message: 'User not found'
+      });
+    }
+
+    const isPremium = user.type === 'premium';
+    const userId = user._id.toString();
+
+    // Premium users get automatic access to all biodatas
+    if (isPremium) {
+      return res.status(200).json({
+        success: true,
+        hasAccess: true,
+        accessType: 'premium',
+        isPremium: true,
+        hasPendingRequest: false,
+        message: 'Premium user - Full access granted'
+      });
+    }
+
+    // Get biodata to check access arrays
+    const biodata = await biodatasCollection.findOne({ 
+      biodataId: parseInt(biodataId) 
+    });
+    
+    if (!biodata) {
+      return res.status(404).json({
+        success: false,
+        hasAccess: false,
+        message: 'Biodata not found'
+      });
+    }
+
+    // Check if user has approved access
+    const hasAccess = biodata.hasAccess && biodata.hasAccess.includes(userId);
+    
+    // Check if user has pending request
+    const hasPendingRequest = biodata.hasRequest && biodata.hasRequest.includes(userId);
+
+    // Determine access type
+    let accessType = 'none';
+    if (hasAccess) {
+      accessType = 'paid';
+    } else if (hasPendingRequest) {
+      accessType = 'pending';
+    }
+
+    res.status(200).json({
+      success: true,
+      hasAccess: hasAccess,
+      hasPendingRequest: hasPendingRequest,
+      accessType: accessType,
+      isPremium: false,
+      userId: userId,
+      message: hasAccess 
+        ? 'Access granted' 
+        : hasPendingRequest 
+          ? 'Payment pending approval' 
+          : 'No access'
+    });
+
+  } catch (error) {
+    console.error('Error checking biodata access:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check biodata access',
+      error: error.message
+    });
+  }
+});
+
+// 4. Get all payments with populated user and biodata info (for admin)
 
 app.get('/payments', async (req, res) => {
   try {
-    const {
-      page = 1,
-      limit = 8
+    const { 
+      page = 1, 
+      limit = 10, 
+      status = 'all',
+      populate = 'true' // New parameter to control population
     } = req.query;
-
-    // Calculate pagination
+    
     const pageNumber = Math.max(1, parseInt(page));
     const limitNumber = Math.max(1, parseInt(limit));
     const skip = (pageNumber - 1) * limitNumber;
 
-    // Execute query with pagination
+    // Build filter
+    const filter = {};
+    if (status !== 'all') {
+      filter.status = status;
+    }
+
+    // Get payments with pagination
     const payments = await paymentCollection
-      .find({})
-      .sort({ _id: -1 })
+      .find(filter)
+      .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNumber)
       .toArray();
 
-    const totalItems = await paymentCollection.countDocuments({});
-
-    // Calculate pagination metadata
+    const totalItems = await paymentCollection.countDocuments(filter);
     const totalPages = Math.ceil(totalItems / limitNumber);
-    const hasNextPage = pageNumber < totalPages;
-    const hasPrevPage = pageNumber > 1;
 
-    // Send response with proper structure
+    // Check if population is requested (default to true for backward compatibility)
+    const shouldPopulate = populate !== 'false';
+
+    let populatedPayments = payments;
+
+    if (shouldPopulate) {
+      // Populate user and biodata information
+      populatedPayments = await Promise.all(
+        payments.map(async (payment) => {
+          let userData = null;
+          let biodataData = null;
+
+          // Populate user information
+          if (payment.userId) {
+            try {
+              const user = await usersCollection.findOne({ 
+                _id: new ObjectId(payment.userId) 
+              });
+              if (user) {
+                userData = {
+                  name: user.name,
+                  email: user.email,
+                };
+              }
+            } catch (userError) {
+              console.error('Error fetching user:', userError);
+            }
+          }
+
+          // Populate biodata information
+          if (payment.biodataId) {
+            try {
+              const biodata = await biodatasCollection.findOne({ 
+                _id: new ObjectId(payment.biodataId) 
+              });
+              if (biodata) {
+                biodataData = {
+                  name: biodata.name,
+                  biodataId: biodata.biodataId,
+                  ContactEmail: biodata.ContactEmail,
+
+                };
+              }
+            } catch (biodataError) {
+              console.error('Error fetching biodata:', biodataError);
+            }
+          }
+
+          // Return payment with populated data, keeping all original fields
+          return {
+            ...payment, // Keep all original payment fields
+            user: userData, // Add populated user data
+            biodata: biodataData // Add populated biodata data
+          };
+        })
+      );
+    }
+
     res.status(200).json({
       success: true,
-      data: payments,
+      data: populatedPayments,
       pagination: {
         currentPage: pageNumber,
         totalPages,
         totalItems,
         itemsPerPage: limitNumber,
-        hasNextPage,
-        hasPrevPage
+        hasNextPage: pageNumber < totalPages,
+        hasPrevPage: pageNumber > 1
+      },
+      // Include metadata about population
+      meta: {
+        populated: shouldPopulate,
+        totalPopulated: shouldPopulate ? populatedPayments.length : 0
       }
     });
 
@@ -785,92 +1099,298 @@ app.get('/payments', async (req, res) => {
     console.error('Error fetching payments:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to fetch payment requests',
-      message: error.message
+      message: 'Failed to fetch payment requests',
+      error: error.message
     });
   }
 });
 
-// Approve Contact Request
-app.put('/payment/approve', async (req, res) => {
+app.put('/payment/update-status', async (req, res) => {
   try {
-    const { biodataId } = req.body;
+    const { paymentId, newStatus } = req.body;
+    console.log('=== Payment Status Update Started ===');
+    console.log('Request:', { paymentId, newStatus });
     
-    if (!biodataId) {
+    if (!paymentId || !newStatus) {
       return res.status(400).json({
         success: false,
-        error: 'Biodata ID is required'
+        message: 'Payment ID and new status are required'
       });
     }
 
-    // Find the current payment
-    const currentPayment = await paymentCollection.findOne({ 
-      biodataId: biodataId.toString() 
-    });
+    const validStatuses = ['pending', 'approved', 'rejected'];
+    if (!validStatuses.includes(newStatus)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be: pending, approved, or rejected'
+      });
+    }
 
-    if (!currentPayment) {
+    // Get payment document
+    const payment = await paymentCollection.findOne({ 
+      _id: new ObjectId(paymentId) 
+    });
+    if (!payment) {
       return res.status(404).json({
         success: false,
-        error: 'Payment request not found'
+        message: 'Payment not found'
       });
     }
 
-    // Determine new status based on current status
-    const isCurrentlyApproved = currentPayment.status && 
-      (currentPayment.status.includes('aprove') || 
-       currentPayment.status.includes('approved'));
+    const oldStatus = payment.status;
+    const userId = payment.userId.toString(); // Keep as string for consistency
+    const biodataId = payment.biodataId.toString();
+    
+    console.log('Payment Info:', { 
+      paymentId,
+      userId, 
+      biodataId,
+      oldStatus,
+      newStatus
+    });
 
-    let newStatus;
-    if (isCurrentlyApproved) {
-      newStatus = 'pending'; // Revoke - set to pending
-    } else {
-      newStatus = `aprovefor${biodataId}`; // Approve - use your pattern
-    }
-
-    // Update the payment
-    const result = await paymentCollection.updateOne(
-      { biodataId: biodataId.toString() },
-      { 
-        $set: { 
-          status: newStatus,
-          ...(isCurrentlyApproved ? { approvedAt: null } : { approvedAt: new Date() })
-        } 
-      }
-    );
-
-    if (result.modifiedCount > 0) {
-      res.status(200).json({
+    // If status is not changing, return early
+    if (oldStatus === newStatus) {
+      return res.status(200).json({
         success: true,
-        message: `Contact request ${isCurrentlyApproved ? 'revoked' : 'approved'} successfully`,
-        modifiedCount: result.modifiedCount,
-        newStatus: newStatus
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        message: 'No changes made',
+        message: 'Status is already set to ' + newStatus,
         modifiedCount: 0
       });
     }
+
+    // Get biodata document
+    const biodata = await biodatasCollection.findOne({ _id: new ObjectId(biodataId) });
+    
+    if (!biodata) {
+      return res.status(404).json({
+        success: false,
+        message: `Biodata not found for biodataId: ${biodataId}`
+      });
+    }
+
+    // console.log('Biodata Found:', {
+    //   biodataId: biodata.biodataId,
+    //   name: biodata.name,
+    //   hasRequest: biodata.hasRequest || [],
+    //   hasAccess: biodata.hasAccess || []
+    // });
+
+    // Convert all array values to strings for consistent comparison
+    const currentHasRequest = (biodata.hasRequest || []).map(id => id.toString());
+    const currentHasAccess = (biodata.hasAccess || []).map(id => id.toString());
+
+    // console.log('Normalized Arrays:', {
+    //   hasRequest: currentHasRequest,
+    //   hasAccess: currentHasAccess
+    // });
+
+    // Manual array manipulation to ensure data type consistency
+    let updatedHasRequest = [...currentHasRequest];
+    let updatedHasAccess = [...currentHasAccess];
+
+    if (newStatus === 'approved') {
+      // APPROVED: Remove from hasRequest and add to hasAccess
+      updatedHasRequest = currentHasRequest.filter(id => id !== userId);
+      if (!updatedHasAccess.includes(userId)) {
+        updatedHasAccess.push(userId);
+      }
+      
+    } else if (newStatus === 'rejected') {
+      // REJECTED: Remove from hasRequest only
+      updatedHasRequest = currentHasRequest.filter(id => id !== userId);
+      
+    } else if (newStatus === 'pending') {
+      if (oldStatus === 'approved') {
+        // Was approved, now pending: Remove from hasAccess, Add to hasRequest
+        updatedHasAccess = currentHasAccess.filter(id => id !== userId);
+        if (!updatedHasRequest.includes(userId)) {
+          updatedHasRequest.push(userId);
+        }
+      } else {
+        // Was rejected or new, now pending: Add to hasRequest
+        if (!updatedHasRequest.includes(userId)) {
+          updatedHasRequest.push(userId);
+        }
+      }
+    }
+
+    // Update biodata with the new arrays
+    const biodataUpdateResult = await biodatasCollection.updateOne(
+      { _id: biodata._id },
+      { 
+        $set: { 
+          hasRequest: updatedHasRequest,
+          hasAccess: updatedHasAccess,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Verify the update by fetching the updated biodata
+    const updatedBiodata = await biodatasCollection.findOne({ _id: biodata._id });
+
+    // Update payment status
+    const paymentUpdate = {
+      status: newStatus,
+      updatedAt: new Date()
+    };
+
+    // Add timestamp fields based on new status
+    if (newStatus === 'approved') {
+      paymentUpdate.approvedAt = new Date();
+    } else if (newStatus === 'rejected') {
+      paymentUpdate.rejectedAt = new Date();
+    }
+
+    const paymentUpdateResult = await paymentCollection.updateOne(
+      { _id: new ObjectId(paymentId) },
+      { $set: paymentUpdate }
+    );
+    res.status(200).json({
+      success: true,
+      message: `Payment status updated from "${oldStatus}" to "${newStatus}"`,
+      data: {
+        paymentId: payment._id,
+        oldStatus,
+        newStatus,
+        biodataId,
+        userId,
+        paymentModified: paymentUpdateResult.modifiedCount > 0,
+        biodataModified: biodataUpdateResult.modifiedCount > 0,
+        arraysUpdated: {
+          hasRequest: updatedHasRequest,
+          hasAccess: updatedHasAccess
+        }
+      }
+    });
+
   } catch (error) {
-    console.error('Error updating payment status:', error);
+    console.error('=== Payment Status Update Error ===');
+    console.error('Error:', error);
+    console.error('Stack:', error.stack);
+    
     res.status(500).json({
       success: false,
-      error: 'Failed to update contact request',
-      message: error.message
+      message: 'Failed to update payment status',
+      error: error.message
     });
   }
 });
-//** 
+
+// 6. Check payment status
+app.get('/payments/status', async (req, res) => {
+  try {
+    const { userEmail, biodataId } = req.query;
+
+    if (!userEmail || !biodataId) {
+      return res.status(400).json({
+        success: false,
+        message: 'User email and biodata ID are required'
+      });
+    }
+
+    // Get user
+    const user = await usersCollection.findOne({ email: userEmail });
+    if (!user) {
+      return res.status(200).json({
+        success: true,
+        hasPendingPayment: false,
+        payment: null
+      });
+    }
+
+    // Get biodata
+    const biodata = await biodatasCollection.findOne({ 
+      biodataId: parseInt(biodataId) 
+    });
+    if (!biodata) {
+      return res.status(200).json({
+        success: true,
+        hasPendingPayment: false,
+        payment: null
+      });
+    }
+
+    // Find payment by ObjectIds
+    const payment = await paymentCollection.findOne({
+      userId: user._id,
+      biodataId: biodata._id
+    });
+
+    if (!payment) {
+      return res.status(200).json({
+        success: true,
+        hasPendingPayment: false,
+        payment: null,
+        message: 'No payment found'
+      });
+    }
+
+    const hasPendingPayment = payment.status === 'pending';
+    const isApproved = payment.status === 'approved';
+
+    res.status(200).json({
+      success: true,
+      hasPendingPayment: hasPendingPayment,
+      isApproved: isApproved,
+      payment: payment,
+      message: hasPendingPayment 
+        ? 'Payment pending approval' 
+        : isApproved 
+          ? 'Payment approved' 
+          : 'Payment status: ' + payment.status
+    });
+
+  } catch (error) {
+    console.error('Error checking payment status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to check payment status',
+      error: error.message
+    });
+  }
+});
+
+// 7. Get biodata with full contact info (for payment page)
+app.get('/reqbiodatas-payment/:biodataId', async (req, res) => {
+  try {
+    const biodataId = parseInt(req.params.biodataId);
+    
+    const biodata = await biodatasCollection.findOne({ 
+      biodataId: biodataId 
+    });
+    
+    if (!biodata) {
+      return res.status(404).json({
+        success: false,
+        message: 'Biodata not found'
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      ...biodata
+    });
+  } catch (error) {
+    console.error('Error fetching biodata:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch biodata',
+      error: error.message
+    });
+  }
+});
 
 
-// get my approved payment
-    app.get('/payment/:email',async(req,res)=>{
-      const email=req.params.email
-      const query = { email:email}
-      result = await paymentCollection.find(query).toArray();
-      res.send(result)
-    })
+
+
+
+
+
+
+
+
+
 
 
 //premium biodata
@@ -906,18 +1426,19 @@ app.get('/premium-biodatas', async (req, res) => {
 
     // update biodata roll ;
 
-    app.patch('/biodataupdate/:id',async (req,res)=>{
+    app.patch('/biodataupdate/:email',async (req,res)=>{
       const updateroll =req.body.updaterole;
-      const id = req.params.id;
-      const query ={_id: new ObjectId(id)}
+      const email = req.params.email;
+      const query ={email}
+
      const  updateDoc ={
       $set:{
-        role:updateroll
+        type:updateroll
       }
      }
-     const result = await biodatasCollection.updateOne(query,updateDoc);
+     const result = await usersCollection.updateOne(query,updateDoc);
      res.send(result)
-      console.log(updateroll,id);
+      console.log(updateroll,email);
     })
 
     // app.get /getbyage
@@ -955,7 +1476,205 @@ app.get('/premium-biodatas', async (req, res) => {
     })
 
 
-    // add to favourites
+
+
+
+    
+    // /  ................ get my request 
+
+  app.get('/payment/:email', async (req, res) => {
+  try {
+    const email = req.params.email;
+    
+    console.log('=== Fetching Contact Requests ===');
+    console.log('User Email:', email);
+
+    // Get user by email
+    const user = await usersCollection.findOne({ email: email });
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const userId = user._id;
+    console.log('User ID:', userId.toString());
+
+    // Find ALL payments for this user (approved, rejected, pending)
+    const payments = await paymentCollection
+      .find({ userId: userId })
+      .toArray();
+
+    console.log(`Found ${payments.length} payments for user`);
+
+    // Populate biodata info for each payment
+    const populatedPayments = await Promise.all(
+      payments.map(async (payment) => {
+        const biodata = await biodatasCollection.findOne({ 
+          _id: payment.biodataId 
+        });
+
+        return {
+          _id: payment._id,
+          userId: payment.userId,
+          biodataId: payment.biodataId,
+          transactionId: payment.transactionId,
+          amount: payment.amount,
+          status: payment.status,
+          createdAt: payment.createdAt,
+          updatedAt: payment.updatedAt,
+          approvedAt: payment.approvedAt,
+          rejectedAt: payment.rejectedAt,
+          biodata: biodata ? {
+            _id: biodata._id,
+            biodataId: biodata.biodataId,
+            name: biodata.name,
+            ContactEmail: biodata.ContactEmail,
+            MobileNumber: biodata.MobileNumber,
+            photo: biodata.photo
+          } : null
+        };
+      })
+    );
+
+    console.log('=== Contact Requests Fetched Successfully ===');
+    
+    res.status(200).json({
+      success: true,
+      data: populatedPayments
+    });
+  } catch (error) {
+    console.error('=== Error Fetching Contact Requests ===');
+    console.error('Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch contact requests',
+      error: error.message
+    });
+  }
+});
+
+// DELETE: Remove payment and update biodata arrays
+app.delete('/payment-delete/:id', async (req, res) => {
+  try {
+    const paymentId = req.params.id;
+    
+    console.log('=== Deleting Contact Request ===');
+    console.log('Payment ID:', paymentId);
+
+    // Get payment document to find userId, biodataId, and status
+    const payment = await paymentCollection.findOne({ 
+      _id: new ObjectId(paymentId) 
+    });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: 'Payment not found'
+      });
+    }
+
+    const userId = payment.userId;
+    const biodataId = payment.biodataId;
+    const paymentStatus = payment.status;
+
+    console.log('Payment Info:', {
+      userId: userId.toString(),
+      biodataId: biodataId.toString(),
+      status: paymentStatus
+    });
+
+    // Get biodata document
+    const biodata = await biodatasCollection.findOne({ _id: biodataId });
+    
+    if (!biodata) {
+      console.log('Warning: Biodata not found, but continuing with payment deletion');
+    }
+
+    // Determine which array to update based on payment status
+    let biodataUpdate = {};
+    let arrayName = '';
+
+    if (paymentStatus === 'approved') {
+      // Remove from hasAccess array
+      biodataUpdate = {
+        $pull: { hasAccess: userId },
+        $set: { updatedAt: new Date() }
+      };
+      arrayName = 'hasAccess';
+      console.log('Removing user from hasAccess array');
+      
+    } else if (paymentStatus === 'pending') {
+      // Remove from hasRequest array
+      biodataUpdate = {
+        $pull: { hasRequest: userId },
+        $set: { updatedAt: new Date() }
+      };
+      arrayName = 'hasRequest';
+      console.log('Removing user from hasRequest array');
+      
+    } else if (paymentStatus === 'rejected') {
+      // For rejected, user shouldn't be in any array, but check both just in case
+      biodataUpdate = {
+        $pull: { 
+          hasRequest: userId,
+          hasAccess: userId
+        },
+        $set: { updatedAt: new Date() }
+      };
+      arrayName = 'hasRequest and hasAccess';
+      console.log('Removing user from both arrays (rejected status)');
+    }
+
+    // Update biodata arrays
+    if (biodata) {
+      const biodataUpdateResult = await biodatasCollection.updateOne(
+        { _id: biodataId },
+        biodataUpdate
+      );
+
+      console.log('Biodata Update Result:', {
+        matchedCount: biodataUpdateResult.matchedCount,
+        modifiedCount: biodataUpdateResult.modifiedCount
+      });
+    }
+
+    // Delete payment document
+    const deleteResult = await paymentCollection.deleteOne({ 
+      _id: new ObjectId(paymentId) 
+    });
+
+    console.log('Payment Delete Result:', {
+      deletedCount: deleteResult.deletedCount
+    });
+
+    if (deleteResult.deletedCount > 0) {
+      console.log('=== Contact Request Deleted Successfully ===');
+      
+      res.status(200).json({
+        success: true,
+        message: `Payment deleted and user removed from biodata's ${arrayName} array`,
+        deletedCount: deleteResult.deletedCount
+      });
+    } else {
+      throw new Error('Failed to delete payment');
+    }
+
+  } catch (error) {
+    console.error('=== Error Deleting Contact Request ===');
+    console.error('Error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete contact request',
+      error: error.message
+    });
+  }
+});
+
+
+    // get favourites dataa
+        // add to favourites
 
     app.post('/favourites',async(req,res)=>{
 
@@ -968,25 +1687,6 @@ app.get('/premium-biodatas', async (req, res) => {
       const result = await favouritesCollection.insertOne(favouriteData)
       res.send(result)
     })
-
-    // /  ................ get my request 
-    app.get('/reqbiodatas-paument/:id',async(req,res)=>{
-      const id= req.params.id;
-      const nt = parseInt(id)
-      const query ={"biodataId":nt}
-      const res1 = await biodatasCollection.findOne(query);
-      res.send(res1)
-    })
-    // delete my eequest
-    app.delete('/payment-delete/:id',async(req,res)=>{
-
-      id=req.params.id;
-      const query = {_id:new ObjectId(id)}
-      const result = await paymentCollection.deleteOne(query)
-      res.send(result) 
-    })
-
-    // get favourites dataa
 
     app.get('/favourites/:email',async(req,res)=>{
 
@@ -1054,7 +1754,7 @@ app.get('/admin-info', async (req, res) => {
   }
 });
   
-    console.log("Pinged your deployment. You successfully connected to MongoDB!");
+    console.log("SoulTie is successfully connected to MongoDB!");
   } finally {
     // Ensures that the client will close when you finish/error
    
@@ -1070,5 +1770,5 @@ app.get( '/' ,(req,res)=>{
 })
 
 app.listen(port,()=>{
-    console.log(`soultie is running von:${port}`);
+    console.log(`soultie is running on:${port}`);
 })
