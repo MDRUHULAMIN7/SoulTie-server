@@ -91,7 +91,6 @@ const verifyToken =(req,res,next)=>{
    app.post('/success', async (req, res) => {
   try {
     const data = req.body;
-    console.log(data);
 
     // Validation: Check if required fields are present
     if (!data.SelfBiodata || !data.PartnerBiodata) {
@@ -199,16 +198,11 @@ const verifyToken =(req,res,next)=>{
   // Backend API Route with Pagination
 app.get('/success', async (req, res) => {
   try {
-    // Get pagination parameters from query string
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 6;
     const sortBy = req.query.sortBy || '_id';
     const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
     const search = req.query.search || '';
-
-    console.log('API Params:', { page, limit, sortBy, sortOrder, search }); // Debug log
-
-    // Build filter query
     const filter = {};
     if (search) {
       filter.$or = [
@@ -217,17 +211,13 @@ app.get('/success', async (req, res) => {
         { PartnerBiodata: { $regex: search, $options: 'i' } }
       ];
     }
-
-    // Get total count for pagination info
     const totalStories = await successCollection.countDocuments(filter);
-    console.log('Total stories:', totalStories); // Debug log
     
     let stories;
     let totalPages;
     let showing;
 
     if (limit === -1) {
-      // Get all data if limit is -1
       stories = await successCollection
         .find(filter)
         .sort({ [sortBy]: sortOrder })
@@ -236,11 +226,8 @@ app.get('/success', async (req, res) => {
       totalPages = 1;
       showing = stories.length;
     } else {
-      // Calculate skip value for pagination
       const skip = (page - 1) * limit;
       totalPages = Math.ceil(totalStories / limit);
-      
-      // Get paginated data
       stories = await successCollection
         .find(filter)
         .sort({ [sortBy]: sortOrder })
@@ -250,16 +237,6 @@ app.get('/success', async (req, res) => {
       
       showing = stories.length;
     }
-
-    console.log('Returning stories:', stories.length); // Debug log
-    console.log('Pagination data:', { 
-      currentPage: page, 
-      totalPages, 
-      totalStories, 
-      showing 
-    }); // Debug log
-
-    // Send response with proper structure
     res.status(200).json({
       success: true,
       data: stories,
@@ -437,7 +414,6 @@ app.patch('/userupdatepremium/:id', async (req, res) => {
         type: updaterole
       }
     };
-    console.log(query)
     const result = await usersCollection.updateOne(query, updateDoc);
     
     if (result.modifiedCount > 0) {
@@ -510,15 +486,10 @@ app.put('/biodatas', async (req, res) => {
       updateData.biodataId = nextBiodataId;
       updateData.createdAt = new Date();
       updateData.role = 'normal';
-      
-      console.log('Creating new biodata with ID:', nextBiodataId);
     } else {
-      // If biodata exists, keep the existing biodataId and createdAt
       updateData.biodataId = existingBiodata.biodataId;
       updateData.createdAt = existingBiodata.createdAt;
       updateData.role = existingBiodata.role || 'normal';
-      
-      console.log('Updating existing biodata with ID:', existingBiodata.biodataId);
     }
 
     const data = {
@@ -589,7 +560,6 @@ app.get('/view-biodatas/:email',async(req,res)=>{
      }
      const result = await biodatasCollection.updateOne(query,updateDoc);
      res.send(result)
-      console.log(updateroll,id);
     })
 
     // get biodatas
@@ -1210,8 +1180,6 @@ app.get('/payments', async (req, res) => {
 app.put('/payment/update-status', async (req, res) => {
   try {
     const { paymentId, newStatus } = req.body;
-    console.log('=== Payment Status Update Started ===');
-    console.log('Request:', { paymentId, newStatus });
     
     if (!paymentId || !newStatus) {
       return res.status(400).json({
@@ -1240,18 +1208,8 @@ app.put('/payment/update-status', async (req, res) => {
     }
 
     const oldStatus = payment.status;
-    const userId = payment.userId.toString(); // Keep as string for consistency
+    const userId = payment.userId.toString(); 
     const biodataId = payment.biodataId.toString();
-    
-    console.log('Payment Info:', { 
-      paymentId,
-      userId, 
-      biodataId,
-      oldStatus,
-      newStatus
-    });
-
-    // If status is not changing, return early
     if (oldStatus === newStatus) {
       return res.status(200).json({
         success: true,
@@ -1269,24 +1227,8 @@ app.put('/payment/update-status', async (req, res) => {
         message: `Biodata not found for biodataId: ${biodataId}`
       });
     }
-
-    // console.log('Biodata Found:', {
-    //   biodataId: biodata.biodataId,
-    //   name: biodata.name,
-    //   hasRequest: biodata.hasRequest || [],
-    //   hasAccess: biodata.hasAccess || []
-    // });
-
-    // Convert all array values to strings for consistent comparison
     const currentHasRequest = (biodata.hasRequest || []).map(id => id.toString());
     const currentHasAccess = (biodata.hasAccess || []).map(id => id.toString());
-
-    // console.log('Normalized Arrays:', {
-    //   hasRequest: currentHasRequest,
-    //   hasAccess: currentHasAccess
-    // });
-
-    // Manual array manipulation to ensure data type consistency
     let updatedHasRequest = [...currentHasRequest];
     let updatedHasAccess = [...currentHasAccess];
 
@@ -1553,7 +1495,6 @@ app.get('/premium-biodatas', async (req, res) => {
      }
      const result = await usersCollection.updateOne(query,updateDoc);
      res.send(result)
-      console.log(updateroll,email);
     })
 
 
@@ -1673,6 +1614,45 @@ app.get('/premium-biodatas', async (req, res) => {
     })
 
  // admin-info 
+app.get('/progress-info', async (req, res) => {
+  try {
+    const [
+      totalBiodata,
+      maleData,
+      femaleData,
+      premiumData,
+      userData,
+      success
+    ] = await Promise.all([
+      biodatasCollection.estimatedDocumentCount(),
+      biodatasCollection.countDocuments({ "biodataType": "male" }),
+      biodatasCollection.countDocuments({ "biodataType": "female" }),
+      usersCollection.countDocuments({ "type": "premium" }),
+      usersCollection.countDocuments(),
+      successCollection.countDocuments()
+    ]);
+    res.json({
+      success: true,
+      data: {
+
+        biodata: totalBiodata,
+        maleData,
+        femaleData,
+        premiumData,
+        userData,
+        success,
+        lastUpdated: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching admin info:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch admin statistics',
+      message: error.message
+    });
+  }
+});
 app.get('/admin-info', async (req, res) => {
   try {
     const [
@@ -1685,12 +1665,12 @@ app.get('/admin-info', async (req, res) => {
       biodatasCollection.estimatedDocumentCount(),
       biodatasCollection.countDocuments({ "biodataType": "male" }),
       biodatasCollection.countDocuments({ "biodataType": "female" }),
-      biodatasCollection.countDocuments({ "role": "premium" }),
+      usersCollection.countDocuments({ "type": "premium" }),
       paymentCollection.aggregate([
         {
           $group: {
             _id: null,
-            totalRevenue: { $sum: "$price" }
+            totalRevenue: { $sum: "$amount" }
           }
         }
       ]).toArray()
