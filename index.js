@@ -88,12 +88,114 @@ const verifyToken =(req,res,next)=>{
 
     // 
     // success story post 
-     app.post('/success',async(req,res)=>{
-       const data = req.body;
-        console.log(data);
-       const result= await successCollection.insertOne(data)
-       res.send(result)
-     })
+   app.post('/success', async (req, res) => {
+  try {
+    const data = req.body;
+    console.log(data);
+
+    // Validation: Check if required fields are present
+    if (!data.SelfBiodata || !data.PartnerBiodata) {
+      return res.status(400).json({
+        success: false,
+        message: 'Both SelfBiodata and PartnerBiodata are required'
+      });
+    }
+
+    // Check if this combination already exists (in any order)
+    const existingEntry = await successCollection.findOne({
+      $or: [
+        // Check exact same combination
+        {
+          SelfBiodata: data.SelfBiodata,
+          PartnerBiodata: data.PartnerBiodata
+        },
+        // Check reverse combination (A+B or B+A)
+        {
+          SelfBiodata: data.PartnerBiodata,
+          PartnerBiodata: data.SelfBiodata
+        }
+      ]
+    });
+
+    if (existingEntry) {
+      return res.status(409).json({
+        success: false,
+        message: 'This biodata combination already exists in success stories',
+        existingEntry: {
+          id: existingEntry._id,
+          selfBiodata: existingEntry.SelfBiodata,
+          partnerBiodata: existingEntry.PartnerBiodata,
+          createdAt: existingEntry.createdAt
+        }
+      });
+    }
+
+    // Check if self biodata is already in any success story
+    const selfExists = await successCollection.findOne({
+      $or: [
+        { SelfBiodata: data.SelfBiodata },
+        { PartnerBiodata: data.SelfBiodata }
+      ]
+    });
+
+    if (selfExists) {
+      return res.status(409).json({
+        success: false,
+        message: 'Your biodata is already associated with another success story',
+        existingStory: {
+          id: selfExists._id,
+          withBiodata: selfExists.SelfBiodata === data.SelfBiodata ? selfExists.PartnerBiodata : selfExists.SelfBiodata
+        }
+      });
+    }
+
+    // Check if partner biodata is already in any success story
+    const partnerExists = await successCollection.findOne({
+      $or: [
+        { SelfBiodata: data.PartnerBiodata },
+        { PartnerBiodata: data.PartnerBiodata }
+      ]
+    });
+
+    if (partnerExists) {
+      return res.status(409).json({
+        success: false,
+        message: 'Partner biodata is already associated with another success story',
+        existingStory: {
+          id: partnerExists._id,
+          withBiodata: partnerExists.SelfBiodata === data.PartnerBiodata ? partnerExists.PartnerBiodata : partnerExists.SelfBiodata
+        }
+      });
+    }
+
+    // Add timestamp if not provided
+    if (!data.createdAt) {
+      data.createdAt = new Date();
+    }
+
+    // Insert the new success story
+    const result = await successCollection.insertOne(data);
+    
+    res.status(201).json({
+      success: true,
+      message: 'Success story added successfully',
+      insertedId: result.insertedId,
+      data: {
+        selfBiodata: data.SelfBiodata,
+        partnerBiodata: data.PartnerBiodata,
+        createdAt: data.createdAt
+      }
+    });
+
+  } catch (error) {
+    console.error('Error adding success story:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Internal server error',
+      error: error.message
+    });
+  }
+});
   // Backend API Route with Pagination
 app.get('/success', async (req, res) => {
   try {
@@ -1393,26 +1495,40 @@ app.get('/reqbiodatas-payment/:biodataId', async (req, res) => {
 
 
 
-//premium biodata
+// get premium biodata in home 
 app.get('/premium-biodatas', async (req, res) => {
   try {
     const { sortBy, order } = req.query;
-    
-    // Base query for premium members
-    const query = { role: "premium" };
-    
-    // Build sort options
-    let sortOptions = {};
+    let sortStage = {};
     if (sortBy && order) {
       const sortField = sortBy === 'age' ? 'Age' : sortBy;
-      sortOptions[sortField] = order === 'desc' ? -1 : 1;
+      sortStage[sortField] = order === 'desc' ? -1 : 1;
     }
     
-    // Execute query with optional sorting
-    const result = await biodatasCollection
-      .find(query)
-      .sort(sortOptions)
-      .toArray();
+    // Use aggregation to join collections 
+    const pipeline = [
+      {
+        $lookup: {
+          from: 'users', 
+          localField: 'ContactEmail',
+          foreignField: 'email',
+          as: 'userInfo'
+        }
+      },
+      {
+        $match: {
+          'userInfo.type': 'premium'
+        }
+      },
+      {
+        $unset: 'userInfo' 
+      }
+    ];
+    if (Object.keys(sortStage).length > 0) {
+      pipeline.push({ $sort: sortStage });
+    }
+    
+    const result = await biodatasCollection.aggregate(pipeline).toArray();
     
     res.status(200).json(result);
   } catch (error) {
@@ -1423,7 +1539,6 @@ app.get('/premium-biodatas', async (req, res) => {
     });
   }
 });
-
     // update biodata roll ;
 
     app.patch('/biodataupdate/:email',async (req,res)=>{
@@ -1441,30 +1556,7 @@ app.get('/premium-biodatas', async (req, res) => {
       console.log(updateroll,email);
     })
 
-    // app.get /getbyage
 
-    app.get('/getbyage',async(req,res)=>{
-      const Age1=req.query.age1;
-      const Age2=req.query.age2;
-      console.log(Age1,Age2);
-      const query = {
-        Age:{ $gte:Age1,$lte:Age2}
-      };
-
-      const result = await biodatasCollection.find(query).toArray();
-      res.send(result)
-    })
-
-    // data divison
-
-    app.get('/getdivison',async(req,res)=>{
-      const divison = req.query.r;
-      const query ={ "ParmanentDivison":divison}
-        const result = await biodatasCollection.find(query).toArray();
-        res.send(result)
-
-   
-    })
     // detail data by id 
 
     app.get('/biodatas/:id',async(req,res)=>{
@@ -1480,15 +1572,11 @@ app.get('/premium-biodatas', async (req, res) => {
 
 
     
-    // /  ................ get my request 
+    // /  ................ get my request in user dashboard
 
   app.get('/payment/:email', async (req, res) => {
   try {
     const email = req.params.email;
-    
-    console.log('=== Fetching Contact Requests ===');
-    console.log('User Email:', email);
-
     // Get user by email
     const user = await usersCollection.findOne({ email: email });
     if (!user) {
@@ -1499,14 +1587,11 @@ app.get('/premium-biodatas', async (req, res) => {
     }
 
     const userId = user._id;
-    console.log('User ID:', userId.toString());
 
-    // Find ALL payments for this user (approved, rejected, pending)
+    // Find ALL payments for this user 
     const payments = await paymentCollection
       .find({ userId: userId })
       .toArray();
-
-    console.log(`Found ${payments.length} payments for user`);
 
     // Populate biodata info for each payment
     const populatedPayments = await Promise.all(
@@ -1537,136 +1622,16 @@ app.get('/premium-biodatas', async (req, res) => {
         };
       })
     );
-
-    console.log('=== Contact Requests Fetched Successfully ===');
     
     res.status(200).json({
       success: true,
       data: populatedPayments
     });
   } catch (error) {
-    console.error('=== Error Fetching Contact Requests ===');
     console.error('Error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch contact requests',
-      error: error.message
-    });
-  }
-});
-
-// DELETE: Remove payment and update biodata arrays
-app.delete('/payment-delete/:id', async (req, res) => {
-  try {
-    const paymentId = req.params.id;
-    
-    console.log('=== Deleting Contact Request ===');
-    console.log('Payment ID:', paymentId);
-
-    // Get payment document to find userId, biodataId, and status
-    const payment = await paymentCollection.findOne({ 
-      _id: new ObjectId(paymentId) 
-    });
-
-    if (!payment) {
-      return res.status(404).json({
-        success: false,
-        message: 'Payment not found'
-      });
-    }
-
-    const userId = payment.userId;
-    const biodataId = payment.biodataId;
-    const paymentStatus = payment.status;
-
-    console.log('Payment Info:', {
-      userId: userId.toString(),
-      biodataId: biodataId.toString(),
-      status: paymentStatus
-    });
-
-    // Get biodata document
-    const biodata = await biodatasCollection.findOne({ _id: biodataId });
-    
-    if (!biodata) {
-      console.log('Warning: Biodata not found, but continuing with payment deletion');
-    }
-
-    // Determine which array to update based on payment status
-    let biodataUpdate = {};
-    let arrayName = '';
-
-    if (paymentStatus === 'approved') {
-      // Remove from hasAccess array
-      biodataUpdate = {
-        $pull: { hasAccess: userId },
-        $set: { updatedAt: new Date() }
-      };
-      arrayName = 'hasAccess';
-      console.log('Removing user from hasAccess array');
-      
-    } else if (paymentStatus === 'pending') {
-      // Remove from hasRequest array
-      biodataUpdate = {
-        $pull: { hasRequest: userId },
-        $set: { updatedAt: new Date() }
-      };
-      arrayName = 'hasRequest';
-      console.log('Removing user from hasRequest array');
-      
-    } else if (paymentStatus === 'rejected') {
-      // For rejected, user shouldn't be in any array, but check both just in case
-      biodataUpdate = {
-        $pull: { 
-          hasRequest: userId,
-          hasAccess: userId
-        },
-        $set: { updatedAt: new Date() }
-      };
-      arrayName = 'hasRequest and hasAccess';
-      console.log('Removing user from both arrays (rejected status)');
-    }
-
-    // Update biodata arrays
-    if (biodata) {
-      const biodataUpdateResult = await biodatasCollection.updateOne(
-        { _id: biodataId },
-        biodataUpdate
-      );
-
-      console.log('Biodata Update Result:', {
-        matchedCount: biodataUpdateResult.matchedCount,
-        modifiedCount: biodataUpdateResult.modifiedCount
-      });
-    }
-
-    // Delete payment document
-    const deleteResult = await paymentCollection.deleteOne({ 
-      _id: new ObjectId(paymentId) 
-    });
-
-    console.log('Payment Delete Result:', {
-      deletedCount: deleteResult.deletedCount
-    });
-
-    if (deleteResult.deletedCount > 0) {
-      console.log('=== Contact Request Deleted Successfully ===');
-      
-      res.status(200).json({
-        success: true,
-        message: `Payment deleted and user removed from biodata's ${arrayName} array`,
-        deletedCount: deleteResult.deletedCount
-      });
-    } else {
-      throw new Error('Failed to delete payment');
-    }
-
-  } catch (error) {
-    console.error('=== Error Deleting Contact Request ===');
-    console.error('Error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Failed to delete contact request',
       error: error.message
     });
   }
@@ -1681,22 +1646,22 @@ app.delete('/payment-delete/:id', async (req, res) => {
       const favouriteData= req.body;
       const query ={"BiodataId":favouriteData.BiodataId}
       const res1 = await favouritesCollection.findOne(query);
-   
       if(res1)return res.status(403).send({message:"forbidean accsss"})
-      // console.log(favouriteData);
       const result = await favouritesCollection.insertOne(favouriteData)
       res.send(result)
     })
 
+
+
     app.get('/favourites/:email',async(req,res)=>{
 
       const email = req.params.email;
-      // console.log(email);
       const query = {"useremail":email}
-      // console.log(query);
       const result = await favouritesCollection.find(query).toArray();
       res.send(result)
     })
+
+
     app.delete("/favourites/:id",async(req,res)=>{
       const  biodataId = parseInt(req.params.id);
       const query = {"BiodataId":biodataId}
